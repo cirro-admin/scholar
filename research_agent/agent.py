@@ -45,6 +45,15 @@ class AgentState:
 
 # ── Query generation ──────────────────────────────────────────────────────────
 
+
+def _simplify_query(query: str) -> str:
+    import re as _re
+    query = _re.sub(r'\w+:\S+', '', query)
+    query = _re.sub(r'\b(OR|AND|NOT)\b', '', query)
+    query = _re.sub(r'[()\"\']', '', query)
+    return _re.sub(r'\s+', ' ', query).strip()[:150]
+
+
 def generate_queries(
     topic: str,
     mode: OutputModeConfig,
@@ -125,10 +134,11 @@ def dispatch_queries(queries: list[str], src: SourceConfig) -> dict:
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         futures = {}
         for q in queries:
-            futures[ex.submit(_fetch_web,    q, src)] = ("web",    q)
-            futures[ex.submit(_fetch_papers, q, src)] = ("papers", q)
-            futures[ex.submit(_fetch_videos, q, src)] = ("videos", q)
-            futures[ex.submit(_fetch_repos,  q, src)] = ("repos",  q)
+            sq = _simplify_query(q)
+            futures[ex.submit(_fetch_web,    sq, src)] = ("web",    q)
+            futures[ex.submit(_fetch_papers, sq, src)] = ("papers", q)
+            futures[ex.submit(_fetch_videos, sq, src)] = ("videos", q)
+            futures[ex.submit(_fetch_repos,  sq, src)] = ("repos",  q)
 
         for future in concurrent.futures.as_completed(futures):
             kind, q = futures[future]

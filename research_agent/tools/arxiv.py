@@ -24,6 +24,16 @@ class Paper:
     citation_count: int = 0
 
 
+
+
+def _clean_query(query: str) -> str:
+    import re as _re
+    query = _re.sub(r'\w+:\S+', '', query)
+    query = _re.sub(r'\b(OR|AND|NOT)\b', '', query)
+    query = _re.sub(r'[()\"\']', '', query)
+    return _re.sub(r'\s+', ' ', query).strip()[:200]
+
+
 # ── arXiv ─────────────────────────────────────────────────────────────────────
 
 def search_arxiv(query: str, max_results: int = 8) -> list[Paper]:
@@ -60,7 +70,7 @@ def search_semantic_scholar(
     headers = {"x-api-key": key} if key else {}
 
     params = {
-        "query": query,
+        "query": _clean_query(query),
         "limit": max_results,
         "fields": "title,abstract,authors,year,externalIds,citationCount,url",
     }

@@ -111,7 +111,7 @@ def search_repos(
 ) -> list[RepoSummary]:
     """Search GitHub for repos matching a query and ingest each one."""
     tok    = token or os.getenv("GITHUB_TOKEN", "")
-    params = {"q": f"{query} stars:>={min_stars}", "sort": "stars", "per_page": max_results}
+    params = {"q": f"{query[:60]} stars:>={min_stars}", "sort": "stars", "per_page": max_results}
     resp   = requests.get(
         "https://api.github.com/search/repositories",
         params=params, headers=_github_headers(tok), timeout=20,
