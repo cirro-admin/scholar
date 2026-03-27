@@ -13,11 +13,11 @@ Loop:
 """
 
 from __future__ import annotations
+from utils.llm import generate_json
 import os, textwrap, concurrent.futures
 from dataclasses import dataclass, field
 from typing import Optional
 
-import google.generativeai as genai
 
 from config.modes import OutputModeConfig
 from config.sources import SourceConfig
@@ -52,10 +52,6 @@ def generate_queries(
     api_key: str = "",
 ) -> list[str]:
     """Generate targeted search queries for the topic and output mode."""
-    key = api_key or os.getenv("GOOGLE_API_KEY", "")
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-
     gaps_section = ""
     if previous_gaps:
         gaps_section = f"\nKnowledge gaps to address:\n" + "\n".join(f"- {g}" for g in previous_gaps)
@@ -81,10 +77,8 @@ def generate_queries(
         Example: ["query 1", "query 2", "query 3"]
     """)
 
-    import json
     try:
-        raw = model.generate_content(prompt).text.strip()
-        return json.loads(raw)
+        return generate_json(prompt)
     except Exception:
         # Fallback: basic queries
         return [

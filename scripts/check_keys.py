@@ -28,9 +28,8 @@ def check_gemini():
     if not model:
         return None, "Key set but GEMINI_MODEL not detected yet — run scripts/debug_gemini.py first"
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=key)
-        r = genai.GenerativeModel(model).generate_content("Reply with just the word PONG")
+        from google import genai
+                r = genai.Client(api_key=env_key).models.generate_content(model=model, contents="Reply with just the word PONG")
         if "PONG" in r.text.upper():
             return True, f"{model} responded"
         return True, f"{model}: {r.text[:40]}"

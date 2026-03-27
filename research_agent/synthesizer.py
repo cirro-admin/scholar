@@ -1,25 +1,15 @@
 """
 research_agent/synthesizer.py
 ──────────────────────────────
-Converts raw multi-source results into structured research notes.
-Output is a ResearchBundle — a clean, topic-clustered knowledge package
-that the writing workflow consumes.
-
-Humanization note: the synthesizer also extracts:
-  - Direct human voices (quotes, anecdotes, first-person accounts)
-  - Concrete real-world examples and case studies
-  - Contradictions and tensions in the literature
-  - Analogies and metaphors used by original authors
-These are flagged in the notes so the writer can weave them in naturally,
-making the final output feel authored by a person, not assembled by a machine.
+Converts raw multi-source results into structured research notes (ResearchBundle).
+Uses utils.llm for all LLM calls — no direct SDK imports here.
 """
 
 from __future__ import annotations
-import os, textwrap
+import textwrap
 from dataclasses import dataclass, field
-from typing import Any
-import google.generativeai as genai
 
+from utils.llm import generate_json
 from research_agent.tools.web_search import SearchResult
 from research_agent.tools.arxiv import Paper
 from research_agent.tools.youtube import VideoTranscript
@@ -29,264 +19,154 @@ from research_agent.tools.pdf_reader import TextChunk
 
 @dataclass
 class SourceNote:
-    """A processed note from a single source."""
-    source_type: str        # "web" | "arxiv" | "youtube" | "github" | "pdf"
-    title:       str
-    url:         str
-    key_points:  list[str]
-    human_voices: list[str]  # quotes, anecdotes, real examples to preserve
-    year:        int = 0
-    citation:    str = ""    # formatted citation string
+    source_type:  str
+    title:        str
+    url:          str
+    key_points:   list[str]
+    human_voices: list[str]
+    year:         int = 0
+    citation:     str = ""
 
 
 @dataclass
 class ResearchBundle:
-    """The complete structured knowledge package handed to the writing workflow."""
-    topic:          str
-    mode_name:      str
-    source_notes:   list[SourceNote]
-    topic_clusters: dict[str, list[str]]   # cluster_name → list of key points
-    human_voices:   list[str]              # all human voice snippets, deduplicated
-    contradictions: list[str]              # tensions / disagreements found
-    analogies:      list[str]              # useful metaphors and comparisons
-    gaps:           list[str]              # identified knowledge gaps
-    suggested_queries: list[str]           # follow-up queries for next round
+    topic:             str
+    mode_name:         str
+    source_notes:      list[SourceNote]
+    topic_clusters:    dict[str, list[str]]
+    human_voices:      list[str]
+    contradictions:    list[str]
+    analogies:         list[str]
+    gaps:              list[str]
+    suggested_queries: list[str]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _llm(prompt: str, api_key: str, model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")) -> str:
-    genai.configure(api_key=api_key)
-    m = genai.GenerativeModel(model)
-    return m.generate_content(prompt).text.strip()
-
-
-def _extract_note_from_web(result: SearchResult, api_key: str) -> SourceNote:
+def _note_from_web(result: SearchResult) -> SourceNote:
     prompt = textwrap.dedent(f"""
         Analyse this web search result and extract structured notes.
-
         Title: {result.title}
         URL: {result.url}
         Content: {result.snippet[:3000]}
 
-        Return JSON with these exact keys:
-        {{
-          "key_points": ["..."],          // 3-6 factual points
-          "human_voices": ["..."],         // direct quotes, specific examples, case studies, anecdotes — preserve original wording
-          "citation": "..."               // APA-style citation if possible
-        }}
-        Return ONLY valid JSON, no markdown fences.
+        Return JSON with exactly these keys:
+        {{"key_points": ["3-6 factual points"],
+          "human_voices": ["direct quotes, specific examples, anecdotes — preserve original wording"],
+          "citation": "APA-style citation"}}
     """)
-    import json
     try:
-        raw  = _llm(prompt, api_key)
-        data = json.loads(raw)
-    except Exception:
-        data = {"key_points": [result.snippet[:200]], "human_voices": [], "citation": result.url}
-
-    return SourceNote(
-        source_type="web",
-        title=result.title,
-        url=result.url,
-        key_points=data.get("key_points", []),
-        human_voices=data.get("human_voices", []),
-        citation=data.get("citation", result.url),
-    )
+        data = generate_json(prompt)
+        return SourceNote(source_type="web", title=result.title, url=result.url,
+                          key_points=data.get("key_points", [result.snippet[:200]]),
+                          human_voices=data.get("human_voices", []),
+                          citation=data.get("citation", result.url))
+    except Exception as e:
+        print(f"[synthesizer] web note failed: {e}")
+        return SourceNote("web", result.title, result.url, [result.snippet[:200]], [], citation=result.url)
 
 
-def _extract_note_from_paper(paper: Paper) -> SourceNote:
-    key_points = [s.strip() for s in paper.abstract.split(". ") if len(s) > 40][:6]
-    authors_str = ", ".join(paper.authors[:3]) + (" et al." if len(paper.authors) > 3 else "")
-    citation = f"{authors_str} ({paper.year}). {paper.title}. {paper.url}"
-    return SourceNote(
-        source_type="arxiv",
-        title=paper.title,
-        url=paper.url,
-        key_points=key_points,
-        human_voices=[],      # academic abstracts rarely have informal voices
-        year=paper.year,
-        citation=citation,
-    )
+def _note_from_paper(paper: Paper) -> SourceNote:
+    points = [s.strip() for s in paper.abstract.split(". ") if len(s) > 40][:6]
+    authors = ", ".join(paper.authors[:3]) + (" et al." if len(paper.authors) > 3 else "")
+    return SourceNote("arxiv", paper.title, paper.url, points, [],
+                      year=paper.year, citation=f"{authors} ({paper.year}). {paper.title}. {paper.url}")
 
 
-def _extract_note_from_video(video: VideoTranscript, api_key: str) -> SourceNote:
+def _note_from_video(video: VideoTranscript) -> SourceNote:
     prompt = textwrap.dedent(f"""
-        Analyse this YouTube video transcript and extract research value.
-
-        Title: {video.title}
-        Channel: {video.channel}
-        Transcript (excerpt): {video.transcript[:3000]}
+        Analyse this YouTube transcript and extract research value.
+        Title: {video.title} | Channel: {video.channel}
+        Transcript: {video.transcript[:3000]}
 
         Return JSON:
-        {{
-          "key_points": ["..."],       // 3-5 substantive factual points
-          "human_voices": ["..."]      // memorable quotes, specific stories, real examples — keep speaker's own words
-        }}
-        Return ONLY valid JSON, no markdown fences.
+        {{"key_points": ["3-5 substantive points"],
+          "human_voices": ["memorable quotes or specific stories — keep speaker's own words"]}}
     """)
-    import json
     try:
-        raw  = _llm(prompt, api_key)
-        data = json.loads(raw)
-    except Exception:
-        data = {"key_points": [], "human_voices": []}
-
-    return SourceNote(
-        source_type="youtube",
-        title=video.title,
-        url=video.url,
-        key_points=data.get("key_points", []),
-        human_voices=data.get("human_voices", []),
-        citation=f"{video.channel}. ({video.title}). YouTube. {video.url}",
-    )
+        data = generate_json(prompt)
+        return SourceNote("youtube", video.title, video.url,
+                          data.get("key_points", []), data.get("human_voices", []),
+                          citation=f"{video.channel}. {video.title}. YouTube. {video.url}")
+    except Exception as e:
+        print(f"[synthesizer] video note failed: {e}")
+        return SourceNote("youtube", video.title, video.url, [], [])
 
 
-def _extract_note_from_repo(repo: RepoSummary) -> SourceNote:
-    key_points = []
-    if repo.description:
-        key_points.append(repo.description)
-    if repo.topics:
-        key_points.append(f"Topics: {', '.join(repo.topics)}")
-    if repo.readme:
-        first_para = repo.readme.split("\n\n")[0].strip()
-        if first_para:
-            key_points.append(first_para[:300])
-    key_points.append(f"GitHub stars: {repo.stars:,}")
-
-    return SourceNote(
-        source_type="github",
-        title=f"{repo.owner}/{repo.repo}",
-        url=repo.url,
-        key_points=key_points,
-        human_voices=[],
-        citation=f"{repo.owner}. ({repo.repo}). GitHub. {repo.url}",
-    )
+def _note_from_repo(repo: RepoSummary) -> SourceNote:
+    points = [p for p in [repo.description,
+               f"Topics: {', '.join(repo.topics)}" if repo.topics else "",
+               (repo.readme.split("\n\n")[0].strip())[:300] if repo.readme else "",
+               f"Stars: {repo.stars:,}"] if p]
+    return SourceNote("github", f"{repo.owner}/{repo.repo}", repo.url, points, [],
+                      citation=f"{repo.owner}. {repo.repo}. GitHub. {repo.url}")
 
 
-def _extract_note_from_chunks(chunks: list[TextChunk], api_key: str) -> SourceNote:
+def _note_from_chunks(chunks: list[TextChunk]) -> SourceNote:
     combined = "\n\n".join(c.text for c in chunks[:6])
     source   = chunks[0].source if chunks else "uploaded_pdf"
     prompt   = textwrap.dedent(f"""
-        Analyse this PDF excerpt and extract research value.
-
+        Analyse this PDF excerpt.
         Source: {source}
         Content: {combined[:4000]}
 
         Return JSON:
-        {{
-          "key_points": ["..."],       // 4-7 substantive points
-          "human_voices": ["..."]      // direct quotes, case studies, specific examples — preserve original wording
-        }}
-        Return ONLY valid JSON, no markdown fences.
+        {{"key_points": ["4-7 substantive points"],
+          "human_voices": ["direct quotes or case studies — preserve original wording"]}}
     """)
-    import json
     try:
-        raw  = _llm(prompt, api_key)
-        data = json.loads(raw)
-    except Exception:
-        data = {"key_points": [c.text[:150] for c in chunks[:3]], "human_voices": []}
+        data = generate_json(prompt)
+        return SourceNote("pdf", source, f"file://{source}",
+                          data.get("key_points", []), data.get("human_voices", []))
+    except Exception as e:
+        print(f"[synthesizer] pdf note failed: {e}")
+        return SourceNote("pdf", source, f"file://{source}", [], [])
 
-    return SourceNote(
-        source_type="pdf",
-        title=source,
-        url=f"file://{source}",
-        key_points=data.get("key_points", []),
-        human_voices=data.get("human_voices", []),
-        citation=source,
-    )
-
-
-# ── Main synthesis ─────────────────────────────────────────────────────────────
 
 def synthesize(
-    topic: str,
-    mode_name: str,
-    web_results:   list[SearchResult]   = (),
-    papers:        list[Paper]          = (),
-    videos:        list[VideoTranscript]= (),
-    repos:         list[RepoSummary]    = (),
-    pdf_chunks:    list[TextChunk]      = (),
-    api_key: str = "",
+    topic: str, mode_name: str,
+    web_results: list[SearchResult] = (),
+    papers: list[Paper] = (),
+    videos: list[VideoTranscript] = (),
+    repos: list[RepoSummary] = (),
+    pdf_chunks: list[TextChunk] = (),
+    api_key: str = "",        # kept for backwards-compat; ignored (uses env)
 ) -> ResearchBundle:
-    """
-    Convert all raw source results into a structured ResearchBundle.
-    """
-    key = api_key or os.getenv("GOOGLE_API_KEY", "")
     notes: list[SourceNote] = []
-
-    for r in web_results:
-        try:    notes.append(_extract_note_from_web(r, key))
-        except Exception as e: print(f"[synthesizer] web note failed: {e}")
-
-    for p in papers:
-        notes.append(_extract_note_from_paper(p))
-
-    for v in videos:
-        try:    notes.append(_extract_note_from_video(v, key))
-        except Exception as e: print(f"[synthesizer] video note failed: {e}")
-
-    for repo in repos:
-        notes.append(_extract_note_from_repo(repo))
+    for r in web_results:  notes.append(_note_from_web(r))
+    for p in papers:       notes.append(_note_from_paper(p))
+    for v in videos:       notes.append(_note_from_video(v))
+    for repo in repos:     notes.append(_note_from_repo(repo))
 
     if pdf_chunks:
-        # Group chunks by source file
         from itertools import groupby
-        sorted_chunks = sorted(pdf_chunks, key=lambda c: c.source)
-        for source, group in groupby(sorted_chunks, key=lambda c: c.source):
-            chunk_list = list(group)
-            try:    notes.append(_extract_note_from_chunks(chunk_list, key))
-            except Exception as e: print(f"[synthesizer] pdf note failed: {e}")
+        for _, grp in groupby(sorted(pdf_chunks, key=lambda c: c.source), key=lambda c: c.source):
+            notes.append(_note_from_chunks(list(grp)))
 
-    # High-level synthesis: cluster, identify contradictions, gaps, analogies
     all_points = [pt for n in notes for pt in n.key_points]
-    all_voices = [v  for n in notes for v  in n.human_voices]
+    all_voices = list({v[:80]: v for n in notes for v in n.human_voices}.values())
 
     cluster_prompt = textwrap.dedent(f"""
         Topic: {topic}
-
-        Here are research notes from multiple sources:
+        Research points:
         {chr(10).join(f'- {pt}' for pt in all_points[:60])}
 
-        Return JSON with these keys:
-        {{
-          "topic_clusters": {{          // group points into 4-7 thematic clusters
-            "Cluster Name": ["point 1", "point 2"]
-          }},
-          "contradictions": ["..."],    // 2-4 genuine tensions or disagreements found
-          "analogies": ["..."],         // 2-4 useful metaphors or comparisons from the sources
-          "gaps": ["..."],              // 2-4 questions the sources don't fully answer
-          "suggested_queries": ["..."]  // 3-5 follow-up search queries to fill the gaps
-        }}
-        Return ONLY valid JSON, no markdown fences.
+        Return JSON:
+        {{"topic_clusters": {{"Cluster Name": ["point 1", "point 2"]}},
+          "contradictions": ["2-4 genuine tensions"],
+          "analogies": ["2-4 useful metaphors from sources"],
+          "gaps": ["2-4 unanswered questions"],
+          "suggested_queries": ["3-5 follow-up queries"]}}
     """)
-
-    import json
     try:
-        raw  = _llm(cluster_prompt, key)
-        meta = json.loads(raw)
-    except Exception:
-        meta = {
-            "topic_clusters": {"General": all_points[:10]},
-            "contradictions": [],
-            "analogies": [],
-            "gaps": [],
-            "suggested_queries": [],
-        }
-
-    # Deduplicate human voices
-    seen_voices, deduped_voices = set(), []
-    for v in all_voices:
-        key_v = v[:80].lower()
-        if key_v not in seen_voices:
-            seen_voices.add(key_v)
-            deduped_voices.append(v)
+        meta = generate_json(cluster_prompt)
+    except Exception as e:
+        print(f"[synthesizer] clustering failed: {e}")
+        meta = {"topic_clusters": {"General": all_points[:10]},
+                "contradictions": [], "analogies": [], "gaps": [], "suggested_queries": []}
 
     return ResearchBundle(
-        topic=topic,
-        mode_name=mode_name,
-        source_notes=notes,
+        topic=topic, mode_name=mode_name, source_notes=notes,
         topic_clusters=meta.get("topic_clusters", {}),
-        human_voices=deduped_voices,
+        human_voices=all_voices,
         contradictions=meta.get("contradictions", []),
         analogies=meta.get("analogies", []),
         gaps=meta.get("gaps", []),

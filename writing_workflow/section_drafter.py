@@ -17,7 +17,7 @@ Humanization strategy (baked into every draft prompt):
 from __future__ import annotations
 import os, textwrap
 from dataclasses import dataclass
-import google.generativeai as genai
+from utils.llm import generate
 
 from config.modes import OutputModeConfig
 from writing_workflow.outline_gen import SectionPlan
@@ -154,16 +154,8 @@ def draft_section(
     api_key: str = "",
 ) -> DraftedSection:
     """Draft a single section using chain-of-thought + humanization prompting."""
-    key = api_key or os.getenv("GOOGLE_API_KEY", "")
-    genai.configure(api_key=key)
-
-    model = genai.GenerativeModel(
-        os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),   # use Pro for drafting — quality matters here
-        system_instruction=HUMANIZATION_SYSTEM_PROMPT,
-    )
-
     prompt   = _build_draft_prompt(section, bundle, mode, context_so_far)
-    response = model.generate_content(prompt).text.strip()
+    response = generate(prompt, system=HUMANIZATION_SYSTEM_PROMPT)
 
     # Extract just the draft (after "DRAFT:")
     if "DRAFT:" in response:
