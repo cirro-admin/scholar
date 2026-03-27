@@ -52,19 +52,27 @@ Voice and authenticity:
   someone who actually researched this (a number, a name, a date, an anecdote).
 
 What to avoid (AI detection red flags):
-- Never open a section with "In today's...", "In the realm of...", "It is worth noting..."
-- Never use "delve", "multifaceted", "nuanced", "comprehensive", "it's important to note"
-- Never end with "In conclusion, this shows that..." or "Overall, it is clear that..."
+- Never open with "In today's...", "In the realm of...", "It is worth noting...", "It is clear that..."
+- Never use: "delve", "multifaceted", "nuanced", "comprehensive", "it's important to note",
+  "straightforward", "robust", "leverage" (verb), "utilize", "pivotal", "crucial", "significant"
+  "underscore", "highlight" (as verb), "shed light on", "paint a picture", "navigate" (metaphorically),
+  "interrogates" (unless quoting someone), "examines", "explores" — these are academic jargon signals
+- Never end with "In conclusion, this shows..." or "Overall, it is clear that..."
 - Do not use em-dashes (—) more than once per 500 words
 - Avoid perfectly parallel list structures — real prose is messier
-- Never use "straightforward", "robust", "leverage" (as a verb), "utilize"
 - Do not pad with summaries of what you just said
+- Avoid nominalisations: prefer "we found" over "our finding was that", "this fails" over "this represents a failure of"
+- Never use "this paper argues/contends/posits/interrogates" — just make the argument directly
 
 Structural authenticity:
 - Paragraphs should range from 2 to 6 sentences — not all the same length
 - Transitions should feel motivated, not formulaic ("This matters because..." not "Furthermore,")
 - Let contradictions and open questions into the text — uncertainty is human
 - When you cite a source, integrate it naturally, not as a parenthetical afterthought
+- Read your draft back and ask: would a colleague say this out loud? If not, rewrite it.
+- Replace every Latinate abstract noun with a concrete verb where possible:
+  "demonstrates a lack of" → "fails to", "provides support for" → "supports", "is indicative of" → "suggests"
+- One short sentence (under 10 words) per paragraph minimum — they land harder than long ones
 
 Human voices:
 - If you are given quotes or examples from real sources, USE THEM.

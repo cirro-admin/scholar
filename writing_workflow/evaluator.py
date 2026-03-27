@@ -12,12 +12,29 @@ from utils.llm import generate_json
 from config.modes import OutputModeConfig
 from writing_workflow.section_drafter import DraftedSection
 
+
+# Sections that are inherently structural (lists, formatted text)
+# and should not be penalised by humanization scoring
+STRUCTURAL_SECTIONS = {
+    "references", "appendices", "table_of_contents",
+    "title_page", "acknowledgements", "changelog", "api_reference",
+}
+
 AI_SIGNATURE_PHRASES = [
-    "in today's rapidly evolving","it is worth noting","it's important to note",
-    "in the realm of","delve into","multifaceted","it is clear that",
-    "in conclusion, this","overall, it is","straightforward","utilize",
-    "robust solution","comprehensive overview","in today's world",
-    "as we navigate","the landscape of","revolutionize","game-changer","leverage",
+    "in today's rapidly evolving", "it is worth noting", "it's important to note",
+    "in the realm of", "delve into", "multifaceted", "it is clear that",
+    "in conclusion, this", "overall, it is", "straightforward", "utilize",
+    "robust solution", "comprehensive overview", "in today's world",
+    "as we navigate", "the landscape of", "revolutionize", "game-changer", "leverage",
+    "pivotal role", "crucial role", "significant role", "it is essential",
+    "shed light on", "paint a picture", "this paper argues", "this paper contends",
+    "this paper posits", "this paper interrogates", "this paper examines",
+    "underscore the importance", "highlights the need", "navigate the complexities",
+    "in an era of", "in the age of", "ever-evolving", "rapidly changing",
+    "it cannot be overstated", "needless to say", "it goes without saying",
+    "at the end of the day", "moving forward", "going forward",
+    "it is important to note", "it is worth noting that",
+    "a number of", "due to the fact that", "in order to",
 ]
 
 
@@ -82,6 +99,14 @@ def evaluate_section(section: DraftedSection, mode: OutputModeConfig, api_key: s
     feedback = data.get("feedback", "")
     if flagged:
         feedback += "\n\nAI phrases to remove:\n" + "\n".join(f'  - "{p}"' for p in flagged)
+
+    # Structural sections (references, appendices etc.) skip humanization scoring
+    is_structural = section.key in STRUCTURAL_SECTIONS
+    if is_structural:
+        overall  = cs * 0.60 + ts * 0.20 + ss * 0.20
+        passed   = overall >= min(mode.eval_threshold, 0.65)
+    else:
+        passed   = overall >= mode.eval_threshold
 
     return EvalResult(
         section_key=section.key, overall_score=round(overall, 3),

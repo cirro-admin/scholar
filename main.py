@@ -27,7 +27,8 @@ def run(
     topic:      str = typer.Option(..., "--topic", "-t", help="Research topic"),
     mode:       str = typer.Option(..., "--mode",  "-m", help="Output mode"),
     sources:    str = typer.Option("all", "--sources", "-s", help="Comma-separated sources or 'all'"),
-    output_dir: str = typer.Option("./outputs", "--out", "-o", help="Output directory"),
+    output_dir: str   = typer.Option("./outputs", "--out", "-o", help="Output directory"),
+    skip_sections: str = typer.Option("", "--skip", help="Comma-separated section keys to skip e.g. 'references,appendices'"),
     pdf_paths:  str = typer.Option("", "--pdfs", "-p", help="Comma-separated PDF paths to ingest"),
 ):
     """Run the full Scholar pipeline: research → HITL → write → HITL → output."""
@@ -59,6 +60,12 @@ def run(
         app.print(f"[dim]Ingesting {len(paths)} PDF(s)...[/dim]")
         pdf_chunks = read_pdfs(paths)
         app.print(f"[dim]  → {len(pdf_chunks)} chunks extracted[/dim]")
+
+    # Apply section skipping
+    if skip_sections:
+        skip_set = {s.strip() for s in skip_sections.split(",") if s.strip()}
+        mode_cfg.structure_template = [s for s in mode_cfg.structure_template if s not in skip_set]
+        app.print(f"[dim]Skipping sections: {skip_set}[/dim]")
 
     # Run research agent with HITL query approval
     bundle = run_research(
