@@ -1,0 +1,26 @@
+# LLM
+google-generativeai>=0.7.0
+
+# Agentic framework
+langgraph>=0.2.0
+langchain-core>=0.2.0
+langchain-google-genai>=1.0.0
+
+# Data sources
+arxiv>=2.1.0
+youtube-transcript-api>=0.6.0
+gitingest>=0.1.0
+pypdf>=4.0.0
+firecrawl-py>=0.0.16
+requests>=2.31.0
+
+# Output rendering
+python-docx>=1.1.0
+markdown>=3.6
+weasyprint>=62.0          # PDF export
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.7.0
+rich>=13.7.0              # CLI pretty-printing
+typer>=0.12.0             # CLI framework
