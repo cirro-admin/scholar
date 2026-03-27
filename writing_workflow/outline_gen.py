@@ -42,7 +42,7 @@ class Outline:
 
 def _llm(prompt: str, api_key: str) -> str:
     genai.configure(api_key=api_key)
-    m = genai.GenerativeModel("gemini-1.5-flash")
+    m = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     return m.generate_content(prompt).text.strip()
 
 

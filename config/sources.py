@@ -1,15 +1,26 @@
 """
 config/sources.py
 ─────────────────
-Loads API keys from .env and exposes a SourceConfig dataclass
-that controls which research sources are active per run.
+Loads API keys from .env and exposes a SourceConfig dataclass.
+Gemini model is auto-detected via GEMINI_MODEL in .env (set by debug_gemini.py).
 """
 
 import os
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
+# Auto-detected by scripts/debug_gemini.py and written to .env.
+# Falls back to a sensible default order if not set.
+def _detect_model() -> str:
+    explicit = os.getenv("GEMINI_MODEL", "")
+    if explicit:
+        return explicit
+    # Fallback priority — newest first
+    return "gemini-2.5-flash"
+
+GEMINI_MODEL = _detect_model()
 
 
 @dataclass
@@ -18,6 +29,7 @@ class SourceConfig:
 
     # ── LLM ───────────────────────────────────────────────────────────────────
     google_api_key: str = ""
+    gemini_model:   str = GEMINI_MODEL
 
     # ── Search ────────────────────────────────────────────────────────────────
     perplexity_api_key: str = ""
@@ -38,23 +50,22 @@ class SourceConfig:
         return source in self.enabled_sources
 
     def validate(self) -> list[str]:
-        """Return a list of warnings for missing keys."""
         warnings = []
         if not self.google_api_key:
             warnings.append("GOOGLE_API_KEY missing — LLM calls will fail")
         if not self.perplexity_api_key and not self.serpapi_key:
-            warnings.append("No web search key (PERPLEXITY_API_KEY or SERPAPI_KEY) — web source disabled")
+            warnings.append("No web search key — web source disabled")
         if not self.youtube_api_key and "youtube" in self.enabled_sources:
             warnings.append("YOUTUBE_API_KEY missing — YouTube source disabled")
         if not self.github_token and "github" in self.enabled_sources:
-            warnings.append("GITHUB_TOKEN missing — GitHub source will use unauthenticated (rate-limited)")
+            warnings.append("GITHUB_TOKEN missing — GitHub rate-limited (60 req/hr)")
         return warnings
 
 
 def load_source_config(enabled_sources: list[str] | None = None) -> SourceConfig:
-    """Load credentials from environment and return a SourceConfig."""
     cfg = SourceConfig(
         google_api_key=os.getenv("GOOGLE_API_KEY", ""),
+        gemini_model=_detect_model(),
         perplexity_api_key=os.getenv("PERPLEXITY_API_KEY", ""),
         serpapi_key=os.getenv("SERPAPI_KEY", ""),
         youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
@@ -64,11 +75,8 @@ def load_source_config(enabled_sources: list[str] | None = None) -> SourceConfig
     )
     if enabled_sources:
         cfg.enabled_sources = enabled_sources
-
-    # Auto-disable sources with no credentials
     if not cfg.perplexity_api_key and not cfg.serpapi_key:
         cfg.enabled_sources = [s for s in cfg.enabled_sources if s != "web"]
     if not cfg.youtube_api_key:
         cfg.enabled_sources = [s for s in cfg.enabled_sources if s != "youtube"]
-
     return cfg

@@ -79,7 +79,7 @@ def evaluate_section(
     flagged = _count_ai_phrases(section.content)
     local_ai_score = max(0.0, 1.0 - (len(flagged) * 0.15))
 
-    model  = genai.GenerativeModel("gemini-1.5-flash")
+    model  = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     prompt = textwrap.dedent(f"""
         You are a strict editorial judge evaluating a section of a {mode.display_name}.
         Score each dimension from 0.0 to 1.0 with one decimal place.

@@ -55,7 +55,7 @@ class ResearchBundle:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _llm(prompt: str, api_key: str, model: str = "gemini-1.5-flash") -> str:
+def _llm(prompt: str, api_key: str, model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")) -> str:
     genai.configure(api_key=api_key)
     m = genai.GenerativeModel(model)
     return m.generate_content(prompt).text.strip()

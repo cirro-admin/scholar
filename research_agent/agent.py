@@ -54,7 +54,7 @@ def generate_queries(
     """Generate targeted search queries for the topic and output mode."""
     key = api_key or os.getenv("GOOGLE_API_KEY", "")
     genai.configure(api_key=key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
 
     gaps_section = ""
     if previous_gaps:

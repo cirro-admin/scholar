@@ -158,7 +158,7 @@ def draft_section(
     genai.configure(api_key=key)
 
     model = genai.GenerativeModel(
-        "gemini-1.5-pro",   # use Pro for drafting — quality matters here
+        os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),   # use Pro for drafting — quality matters here
         system_instruction=HUMANIZATION_SYSTEM_PROMPT,
     )
 
