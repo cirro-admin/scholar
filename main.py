@@ -44,6 +44,7 @@ def run(
     submission_date: str = typer.Option("", "--submission-date",
                           help="Submission date e.g. 'May 2025' (thesis)"),
     organisation:str= typer.Option("", "--org",        help="Organisation name (report)"),
+    fmt: str = typer.Option("", "--format", "-f", help="Override output format: docx, markdown, pdf, html"),
 ):
     """Run the full Scholar pipeline: research → HITL → write → HITL → output."""
     from research_agent.agent import run_research
