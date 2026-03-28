@@ -30,6 +30,20 @@ def run(
     output_dir: str   = typer.Option("./outputs", "--out", "-o", help="Output directory"),
     skip_sections: str = typer.Option("", "--skip", help="Comma-separated section keys to skip e.g. 'references,appendices'"),
     pdf_paths:  str = typer.Option("", "--pdfs", "-p", help="Comma-separated PDF paths to ingest"),
+    # Document metadata
+    author:     str = typer.Option("", "--author",     help="Author name"),
+    university: str = typer.Option("", "--university", help="University name (thesis)"),
+    department: str = typer.Option("", "--department", help="Department (thesis)"),
+    supervisor: str = typer.Option("", "--supervisor", help="Supervisor name (thesis)"),
+    student_id: str = typer.Option("", "--student-id", help="Student ID (thesis)"),
+    degree:     str = typer.Option("", "--degree",     help="Degree title e.g. 'MSc Computer Science'"),
+    affiliation:str = typer.Option("", "--affiliation",help="Affiliation (article)"),
+    keywords:   str = typer.Option("", "--keywords",   help="Comma-separated keywords (article)"),
+    journal_style: str = typer.Option("nature", "--journal-style",
+                          help="Journal style: nature, ieee, apa, acm (article mode)"),
+    submission_date: str = typer.Option("", "--submission-date",
+                          help="Submission date e.g. 'May 2025' (thesis)"),
+    organisation:str= typer.Option("", "--org",        help="Organisation name (report)"),
 ):
     """Run the full Scholar pipeline: research → HITL → write → HITL → output."""
     from research_agent.agent import run_research
@@ -79,12 +93,29 @@ def run(
     app.print(f"\n[dim]Research complete — {len(bundle.source_notes)} notes, "
               f"{len(bundle.topic_clusters)} clusters[/dim]")
 
+    # Build document metadata from CLI args
+    from writing_workflow.document_templates import DocumentMeta
+    meta = DocumentMeta(
+        author=author or "Author",
+        university=university,
+        department=department,
+        supervisor=supervisor,
+        student_id=student_id,
+        degree=degree,
+        affiliation=affiliation,
+        keywords=[k.strip() for k in keywords.split(",") if k.strip()],
+        organisation=organisation,
+        journal_style=journal_style,
+        submission_date=submission_date,
+    )
+
     # Run writing workflow (HITL outline approval is inside the graph)
     output = run_writing_workflow(
         bundle=bundle,
         mode=mode_cfg,
         api_key=src_cfg.google_api_key,
         output_dir=output_dir,
+        meta=meta,
     )
 
     app.print(Panel(
@@ -99,8 +130,10 @@ def run(
 
 @cli.command()
 def modes():
-    """List all available output modes."""
+    """List all available output modes and journal styles."""
     from rich.table import Table
+    from writing_workflow.journal_styles import JOURNAL_STYLES
+
     table = Table(title="Available output modes", show_header=True)
     table.add_column("Mode",         style="cyan")
     table.add_column("Display name")
@@ -116,6 +149,19 @@ def modes():
             str(m.eval_threshold),
         )
     app.print(table)
+
+    app.print("[bold]Available journal styles[/bold] (use with --mode article --journal-style NAME)")
+    jt = Table(show_header=True)
+    jt.add_column("Style",    style="cyan")
+    jt.add_column("Name")
+    jt.add_column("Citation")
+    jt.add_column("Spacing")
+    jt.add_column("Abstract")
+    for name, js in JOURNAL_STYLES.items():
+        default = " [green](default)[/green]" if name == "nature" else ""
+        jt.add_row(name + default, js.display_name, js.citation_format,
+                   str(js.line_spacing), js.abstract_format)
+    app.print(jt)
 
 
 if __name__ == "__main__":
