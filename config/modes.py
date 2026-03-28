@@ -67,13 +67,16 @@ MODES: dict[str, OutputModeConfig] = {
         ],
         section_prompts={
             "abstract": (
-                "Write a structured abstract (150-300 words) covering: background, "
-                "objectives, methods, key results, and conclusions. Use past tense."
+                "Write a structured abstract (150-300 words) following APA 7 format: "
+                "background, objectives, methods, key results, and conclusions. "
+                "Use past tense throughout. No citations in the abstract. "
+                "Label with the word Abstract centred at the top, not bold."
             ),
             "introduction": (
                 "Open with broader context, narrow to the specific gap this work "
                 "addresses, state research questions clearly, outline chapter structure. "
-                "Use formal academic register."
+                "Follow APA 7: use level-1 headings (bold, centred), avoid em-dashes, "
+                "use active voice where possible, cite sources as (Author, Year)."
             ),
             "literature_review": (
                 "Synthesise existing literature thematically, not chronologically. "
