@@ -41,6 +41,7 @@ class WritingState(TypedDict):
 
     final_output:    FormattedOutput | None
     hitl_outline_approved: bool
+    meta:            dict
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
@@ -180,11 +181,15 @@ def node_evaluate_sections(state: WritingState) -> dict:
 
 def node_format_output(state: WritingState) -> dict:
     print("[orchestrator] Formatting final output...")
+    from writing_workflow.document_templates import DocumentMeta
+    meta_dict = state.get("meta", {})
+    meta = DocumentMeta(**meta_dict) if meta_dict else DocumentMeta()
     output = render(
         outline=state["outline"],
         sections=state["sections"],
         mode=state["mode"],
         output_dir=state["output_dir"],
+        meta=meta,
     )
     return {"final_output": output}
 
@@ -229,6 +234,7 @@ def run_writing_workflow(
     mode: OutputModeConfig,
     api_key: str = "",
     output_dir: str = "./outputs",
+    meta=None,
 ) -> FormattedOutput:
     """Run the full writing workflow and return the path to the final output file."""
     key   = api_key or os.getenv("GOOGLE_API_KEY", "")
@@ -247,6 +253,7 @@ def run_writing_workflow(
         "context_so_far":  "",
         "final_output":    None,
         "hitl_outline_approved": False,
+        "meta": {k: v for k, v in (meta.__dict__ if meta else {}).items() if v},
     }
 
     config = {"configurable": {"thread_id": "scholar_run"}}
