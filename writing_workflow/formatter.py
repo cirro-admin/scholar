@@ -483,7 +483,10 @@ def _build_docx(title, sections, mode, meta, output_path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _rich_to_markdown(el: RichElement) -> str:
-    label_line = f"*{el.label}: {el.caption}*\n\n" if el.label else ""
+    # Strip duplicate label prefix from caption if LLM already included it
+    import re as _re
+    clean_cap = _re.sub(r"^(Figure|Table|Equation|Listing)\s*\d+[:\.]?\s*", "", el.caption).strip()
+    label_line = f"*{el.label}: {clean_cap}*\n\n" if el.label else ""
     if el.type == "mermaid":
         return f"\n\n{label_line}```mermaid\n{el.source}\n```\n"
     elif el.type == "table":

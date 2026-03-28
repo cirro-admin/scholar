@@ -177,6 +177,16 @@ def draft_section(
     else:
         content = response  # fallback: use full response
 
+    # Post-process: remove placeholder example.com links
+    import re as _re2
+    content = _re2.sub(r'\[([^\]]+)\]\(https?://example\.com[^\)]*\)', r'', content)
+    content = _re2.sub(r'\(https?://example\.com[^\)]*\)', '', content)
+
+    # Post-process: remove placeholder example.com links
+    import re as _re2
+    content = _re2.sub(r'\[([^\]]+)\]\(https?://example\.com[^)]*\)', r'\1', content)
+    content = _re2.sub(r'\(https?://example\.com[^)]*\)', '', content)
+
     # Post-process: reduce em-dashes — keep max 1 per section, replace rest
     import re as _re
     em_dashes = _re.findall(r" — ", content)
