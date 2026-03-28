@@ -101,15 +101,31 @@ def node_draft_sections(state: WritingState) -> dict:
 
     new_sections = dict(existing)
 
-    for plan in to_draft:
+    # Draft abstract last so it can summarise what was actually written
+    deferred  = [p for p in to_draft if p.key == "abstract"]
+    immediate = [p for p in to_draft if p.key != "abstract"]
+
+    for plan in immediate + deferred:
         iters[plan.key] = iters.get(plan.key, 0) + 1
         print(f"[orchestrator] Drafting: {plan.title} "
               f"(attempt {iters[plan.key]}/{mode.max_draft_iterations})")
+
+        # For abstract on first attempt, inject a summary of completed sections
+        extra_context = context
+        if plan.key == "abstract" and new_sections:
+            completed = [s for k, s in new_sections.items()
+                         if k not in ("abstract", "table_of_contents", "references")]
+            if completed:
+                summary = "\n\n".join(
+                    f"[{s.title}]\n{s.content[:400]}" for s in completed[:4]
+                )
+                extra_context = f"COMPLETED SECTIONS SUMMARY:\n{summary}\n\n{context}"
+
         drafted = draft_section(
             section=plan,
             bundle=bundle,
             mode=mode,
-            context_so_far=context,
+            context_so_far=extra_context,
             api_key=api_key,
         )
         new_sections[plan.key] = drafted
