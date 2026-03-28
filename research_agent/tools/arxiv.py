@@ -38,8 +38,7 @@ def _clean_query(query: str) -> str:
 
 def search_arxiv(query: str, max_results: int = 8) -> list[Paper]:
     """Search arXiv and return Paper objects. Respects rate limits."""
-    # arXiv asks for 3 seconds between requests — we use 4 to be safe
-    time.sleep(4)
+    wait_for('arxiv')   # shared rate limit — safe across parallel workers
     client = arxiv_lib.Client(
         page_size=max_results,
         delay_seconds=4,   # built-in delay between pages
@@ -64,8 +63,9 @@ def search_arxiv(query: str, max_results: int = 8) -> list[Paper]:
             ))
     except Exception as e:
         if "429" in str(e) or "Too Many" in str(e):
-            print(f"[arxiv] Rate limited — waiting 30s before retry")
+            print(f"[arxiv] Rate limited — backing off 30s")
             time.sleep(30)
+            wait_for("arxiv")
         else:
             raise
     return papers

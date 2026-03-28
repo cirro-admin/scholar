@@ -6,6 +6,7 @@ Returns RepoSummary objects with README, file tree, and key code snippets.
 """
 
 from __future__ import annotations
+from utils.rate_limiter import wait_for
 import os, re, requests
 from dataclasses import dataclass, field
 from typing import Optional

@@ -291,7 +291,20 @@ def _rich_to_docx(el: RichElement, doc) -> None:
         img_para = doc.add_paragraph()
         img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = img_para.add_run()
-        run.add_picture(el.image_path, width=Inches(5.0))
+        # Check image dimensions — latex renders can be very thin
+        from PIL import Image as _PilImg
+        try:
+            with _PilImg.open(el.image_path) as _im:
+                _w, _h = _im.size
+                _aspect = _h / _w if _w > 0 else 1
+            # Target 5.5 inches wide for charts/diagrams, narrower for equations
+            if el.type == "latex" or _aspect < 0.3:
+                _target_w = Inches(5.5)  # equations: full width
+            else:
+                _target_w = Inches(5.5)
+        except Exception:
+            _target_w = Inches(5.5)
+        run.add_picture(el.image_path, width=_target_w)
         cap = doc.add_paragraph(f"{el.label}: {el.caption}" if el.label else el.caption)
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cap.runs[0].font.size = Pt(9)
@@ -302,10 +315,26 @@ def _rich_to_docx(el: RichElement, doc) -> None:
         rows = [r for r in el.source.strip().splitlines() if r.strip().startswith("|")]
         rows = [r for r in rows if not re.match(r"^\|[-:| ]+\|$", r.strip())]
         if rows:
-            cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+            def _clean_cell(text: str) -> str:
+                """Strip markdown bold/italic markers from table cell text."""
+                import re as _re
+                text = _re.sub(r"\*{1,3}(.*?)\*{1,3}", r"", text)  # **bold**, *italic*, ***both***
+                text = _re.sub(r"\\?\*", "", text)                   # escaped \* artefacts
+                return text.strip()
+
+            cells = [[_clean_cell(c) for c in r.strip().strip("|").split("|")] for r in rows]
             ncols = max(len(row) for row in cells)
             table = doc.add_table(rows=len(cells), cols=ncols)
             table.style = "Table Grid"
+            # Set table width to fit page
+            from docx.oxml.ns import qn as _qn
+            from docx.oxml import OxmlElement as _oxe
+            tbl_pr = table._tbl.tblPr
+            tbl_w  = _oxe("w:tblW")
+            tbl_w.set(_qn("w:w"), "9360")
+            tbl_w.set(_qn("w:type"), "dxa")
+            tbl_pr.append(tbl_w)
+
             for i, row in enumerate(cells):
                 for j, cell_text in enumerate(row[:ncols]):
                     cell = table.rows[i].cells[j]
@@ -313,6 +342,11 @@ def _rich_to_docx(el: RichElement, doc) -> None:
                     if i == 0:
                         for run in cell.paragraphs[0].runs:
                             run.bold = True
+                            run.font.size = Pt(9)
+                    else:
+                        for run in cell.paragraphs[0].runs:
+                            run.font.size = Pt(9)
+            doc.add_paragraph()
             cap = doc.add_paragraph(f"{el.label}: {el.caption}" if el.label else el.caption)
             cap.runs[0].font.size = Pt(9)
             cap.runs[0].italic    = True
@@ -416,6 +450,11 @@ def _build_docx(title, sections, mode, meta, output_path):
             para_text = para_text.strip()
             if not para_text:
                 continue
+            # Skip duplicate headings — the section title was already added above
+            if re.match(r"^#+\s+\d+\.?\s+", para_text):
+                continue   # e.g. "# 1. Introduction" duplicating the section heading
+            if re.match(r"^#+\s+" + re.escape(sec.title.lstrip("0123456789. ")), para_text):
+                continue   # exact title match
             if para_text.startswith("## "):
                 doc.add_heading(para_text[3:], level=2)
             elif para_text.startswith("### "):
@@ -448,7 +487,9 @@ def _rich_to_markdown(el: RichElement) -> str:
     if el.type == "mermaid":
         return f"\n\n{label_line}```mermaid\n{el.source}\n```\n"
     elif el.type == "table":
-        return f"\n\n{label_line}{el.source}\n"
+        # Clean escaped bold markers from table source before writing
+        clean_src = re.sub(r"\\\*", "", el.source)   # remove \* artefacts
+        return f"\n\n{label_line}{clean_src}\n"
     elif el.type == "latex":
         return f"\n\n{label_line}$$\n{el.source}\n$$\n"
     elif el.type == "chart":

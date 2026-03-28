@@ -6,6 +6,7 @@ Returns a normalised list of SearchResult objects.
 """
 
 from __future__ import annotations
+from utils.rate_limiter import wait_for
 import os, requests
 from dataclasses import dataclass
 from typing import Optional
