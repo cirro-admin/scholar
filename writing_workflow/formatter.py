@@ -80,7 +80,8 @@ def _apply_template_to_doc(doc, template, meta: DocumentMeta):
     from docx.shared import Pt as Pt2
     from docx.oxml.ns import qn as qn2
     pPr = style.paragraph_format
-    pPr.line_spacing = template.line_spacing * 12 * 914  # line spacing in twips approx
+    # python-docx line_spacing: float = multiple (1.0=single, 1.5=one-half, 2.0=double)
+    pPr.line_spacing = template.line_spacing
     pPr.space_after  = Pt2(0)
 
     # Page numbers in footer
