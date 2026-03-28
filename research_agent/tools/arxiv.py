@@ -37,24 +37,37 @@ def _clean_query(query: str) -> str:
 # ── arXiv ─────────────────────────────────────────────────────────────────────
 
 def search_arxiv(query: str, max_results: int = 8) -> list[Paper]:
-    """Search arXiv and return Paper objects."""
-    client = arxiv_lib.Client()
+    """Search arXiv and return Paper objects. Respects rate limits."""
+    # arXiv asks for 3 seconds between requests — we use 4 to be safe
+    time.sleep(4)
+    client = arxiv_lib.Client(
+        page_size=max_results,
+        delay_seconds=4,   # built-in delay between pages
+        num_retries=3,
+    )
     search = arxiv_lib.Search(
         query=query,
         max_results=max_results,
         sort_by=arxiv_lib.SortCriterion.Relevance,
     )
     papers = []
-    for result in client.results(search):
-        papers.append(Paper(
-            title=result.title,
-            abstract=result.summary,
-            authors=[a.name for a in result.authors],
-            year=result.published.year,
-            url=result.entry_id,
-            source="arxiv",
-            doi=result.doi or "",
-        ))
+    try:
+        for result in client.results(search):
+            papers.append(Paper(
+                title=result.title,
+                abstract=result.summary,
+                authors=[a.name for a in result.authors],
+                year=result.published.year,
+                url=result.entry_id,
+                source="arxiv",
+                doi=result.doi or "",
+            ))
+    except Exception as e:
+        if "429" in str(e) or "Too Many" in str(e):
+            print(f"[arxiv] Rate limited — waiting 30s before retry")
+            time.sleep(30)
+        else:
+            raise
     return papers
 
 

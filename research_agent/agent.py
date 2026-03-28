@@ -126,17 +126,21 @@ def _fetch_repos(query: str, src: SourceConfig) -> list[RepoSummary]:
 
 
 def dispatch_queries(queries: list[str], src: SourceConfig) -> dict:
-    """Run all queries across all sources in parallel. Returns collected results."""
+    """
+    Run all queries across all sources.
+    Web/YouTube/GitHub run in parallel.
+    arXiv/Semantic Scholar run sequentially to avoid 429 rate limits.
+    """
     collected: dict = {
         "web": [], "papers": [], "videos": [], "repos": []
     }
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    # ── Non-arXiv sources: parallel ───────────────────────────────────────
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futures = {}
         for q in queries:
             sq = _simplify_query(q)
             futures[ex.submit(_fetch_web,    sq, src)] = ("web",    q)
-            futures[ex.submit(_fetch_papers, sq, src)] = ("papers", q)
             futures[ex.submit(_fetch_videos, sq, src)] = ("videos", q)
             futures[ex.submit(_fetch_repos,  sq, src)] = ("repos",  q)
 
@@ -148,6 +152,18 @@ def dispatch_queries(queries: list[str], src: SourceConfig) -> dict:
                 print(f"[agent] {kind:8s} | {len(results):2d} results | '{q[:50]}'")
             except Exception as e:
                 print(f"[agent] {kind:8s} | FAILED | '{q[:50]}' | {e}")
+
+    # ── arXiv: sequential with delay to avoid 429 ─────────────────────────
+    if src.is_enabled("arxiv"):
+        print(f"[agent] Fetching papers sequentially ({len(queries)} queries, ~4s apart)...")
+        for q in queries:
+            sq = _simplify_query(q)
+            try:
+                results = _fetch_papers(sq, src)
+                collected["papers"].extend(results)
+                print(f"[agent] {'papers':8s} | {len(results):2d} results | '{q[:50]}'")
+            except Exception as e:
+                print(f"[agent] {'papers':8s} | FAILED | '{q[:50]}' | {e}")
 
     return collected
 
