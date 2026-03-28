@@ -103,8 +103,8 @@ MODES: dict[str, OutputModeConfig] = {
         file_extension=".docx",
         max_research_rounds=5,
         preferred_sources=["arxiv", "web", "pdf", "youtube", "github"],
-        eval_threshold=0.85,
-        max_draft_iterations=4,
+        eval_threshold=0.80,
+        max_draft_iterations=3,
         target_words_per_section=900,
     ),
 

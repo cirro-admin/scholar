@@ -103,15 +103,16 @@ def evaluate_section(section: DraftedSection, mode: OutputModeConfig, api_key: s
     # Structural sections (references, appendices etc.) skip humanization scoring
     is_structural = section.key in STRUCTURAL_SECTIONS
     if is_structural:
-        overall  = cs * 0.60 + ts * 0.20 + ss * 0.20
-        passed   = overall >= min(mode.eval_threshold, 0.65)
+        overall = cs * 0.60 + ts * 0.20 + ss * 0.20
+        passed  = overall >= min(mode.eval_threshold, 0.65)
     else:
-        passed   = overall >= mode.eval_threshold
+        overall = cs*0.25 + hs*0.30 + local_ai*0.25 + ts*0.10 + ss*0.10
+        passed  = overall >= mode.eval_threshold
 
     return EvalResult(
         section_key=section.key, overall_score=round(overall, 3),
         content_score=cs, humanization_score=hs, ai_signature_score=local_ai,
         tone_score=ts, structure_score=ss,
-        passed=overall >= mode.eval_threshold,
+        passed=passed,          # use the correctly computed passed value
         feedback=feedback, flagged_phrases=flagged,
     )
