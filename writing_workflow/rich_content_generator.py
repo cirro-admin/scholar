@@ -67,11 +67,18 @@ def _render_latex_to_png(latex: str, output_dir: str) -> str:
 
         fig, ax = plt.subplots(figsize=(6, 1.2))
         ax.axis("off")
-        # Ensure it's wrapped in $$ for display math
+        # Strip any existing $$ or $ delimiters — matplotlib mathtext
+        # uses its own $ wrapping internally
         expr = latex.strip()
-        if not expr.startswith("$"):
-            expr = f"$${expr}$$"
-        ax.text(0.5, 0.5, expr, fontsize=16, ha="center", va="center",
+        # Remove display math delimiters $$...$$
+        if expr.startswith("$$") and expr.endswith("$$"):
+            expr = expr[2:-2].strip()
+        # Remove inline math delimiters $...$
+        elif expr.startswith("$") and expr.endswith("$"):
+            expr = expr[1:-1].strip()
+        # Wrap in single $ for matplotlib mathtext
+        expr = f"${expr}$"
+        ax.text(0.5, 0.5, expr, fontsize=14, ha="center", va="center",
                 transform=ax.transAxes)
         fig.savefig(str(png_path), dpi=150, bbox_inches="tight",
                     facecolor="white", transparent=False)
@@ -84,6 +91,13 @@ def _render_latex_to_png(latex: str, output_dir: str) -> str:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
+def _sanitise_values(vals) -> list:
+    """Replace None / non-numeric values with 0 to prevent matplotlib crashes."""
+    if not isinstance(vals, list):
+        return []
+    return [v if isinstance(v, (int, float)) else 0 for v in vals]
+
+
 def _render_chart_to_png(chart_spec: dict, output_dir: str) -> str:
     """
     Execute a chart spec and save as PNG.
@@ -95,13 +109,16 @@ def _render_chart_to_png(chart_spec: dict, output_dir: str) -> str:
         import matplotlib.pyplot as plt
         import numpy as np
 
-        h        = hashlib.md5(json.dumps(chart_spec).encode()).hexdigest()[:8]
+        h        = hashlib.md5(json.dumps(chart_spec, default=str).encode()).hexdigest()[:8]
         png_path = Path(output_dir) / f"chart_{h}.png"
 
         fig, ax  = plt.subplots(figsize=(8, 5))
         chart_type = chart_spec.get("type", "bar")
         data       = chart_spec.get("data", [])
-        labels     = chart_spec.get("x_labels", [d.get("label", f"Item {i}") for i, d in enumerate(data)])
+        if not data:
+            plt.close(fig)
+            return ""
+        labels = chart_spec.get("x_labels", [d.get("label", f"Item {i}") for i, d in enumerate(data)])
 
         if chart_type == "bar":
             n_series = max(len(d.get("values", [])) for d in data) if data else 1
@@ -111,14 +128,15 @@ def _render_chart_to_png(chart_spec: dict, output_dir: str) -> str:
                 vals = series.get("values", [])
                 if isinstance(vals, list):
                     ax.bar(x + i * width - (n_series - 1) * width / 2,
-                           vals[:len(x)], width, label=series.get("series", ""))
+                           _sanitise_values(vals)[:len(x)], width, label=series.get("series", ""))
             ax.set_xticks(x)
             ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=9)
 
         elif chart_type == "line":
             for series in data:
                 vals = series.get("values", [])
-                ax.plot(labels[:len(vals)], vals, marker="o",
+                clean_vals = _sanitise_values(series.get("values", []))
+                ax.plot(labels[:len(clean_vals)], clean_vals, marker="o",
                         label=series.get("series", ""))
 
         elif chart_type == "scatter":
