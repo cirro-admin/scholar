@@ -18,6 +18,7 @@ from __future__ import annotations
 import os, textwrap
 from dataclasses import dataclass
 from utils.llm import generate
+from writing_workflow.rich_content_generator import RichElement, generate_rich_elements
 
 from config.modes import OutputModeConfig
 from writing_workflow.outline_gen import SectionPlan
@@ -26,11 +27,16 @@ from research_agent.synthesizer import ResearchBundle
 
 @dataclass
 class DraftedSection:
-    key:        str
-    title:      str
-    content:    str
-    word_count: int
+    key:          str
+    title:        str
+    content:      str
+    word_count:   int
     sources_used: list[str]
+    rich_elements: list[RichElement] = None
+
+    def __post_init__(self):
+        if self.rich_elements is None:
+            self.rich_elements = []
 
 
 # ── Humanization system prompt ─────────────────────────────────────────────────
@@ -58,7 +64,7 @@ What to avoid (AI detection red flags):
   "underscore", "highlight" (as verb), "shed light on", "paint a picture", "navigate" (metaphorically),
   "interrogates" (unless quoting someone), "examines", "explores" — these are academic jargon signals
 - Never end with "In conclusion, this shows..." or "Overall, it is clear that..."
-- Do not use em-dashes (—) more than once per 500 words
+- Do not use em-dashes (—). Use commas, colons, or parentheses instead. Em-dashes are a strong AI detection signal when overused.
 - Avoid perfectly parallel list structures — real prose is messier
 - Do not pad with summaries of what you just said
 - Avoid nominalisations: prefer "we found" over "our finding was that", "this fails" over "this represents a failure of"
@@ -171,7 +177,38 @@ def draft_section(
     else:
         content = response  # fallback: use full response
 
+    # Post-process: reduce em-dashes — keep max 1 per section, replace rest
+    import re as _re
+    em_dashes = _re.findall(r" — ", content)
+    if len(em_dashes) > 1:
+        count = [0]
+        def _replace_em(m):
+            count[0] += 1
+            if count[0] == 1:
+                return m.group(0)
+            return ", " if count[0] % 2 == 0 else "; "
+        content = _re.sub(r" — ", _replace_em, content)
+
     word_count = len(content.split())
+
+    # Generate rich elements (figures, tables, equations, code, charts)
+    # Skip for structural sections — they don't need rich content
+    SKIP_RICH = {"abstract", "table_of_contents", "references",
+                 "acknowledgements", "appendices", "title_page"}
+    rich_elements = []
+    if section.key not in SKIP_RICH:
+        research_notes = "\n".join(
+            f"- {pt}" for n in bundle.source_notes for pt in n.key_points[:2]
+        )[:1200]
+        output_dir = os.path.join(os.getenv("SCHOLAR_OUTPUT_DIR", "./outputs"), "figures")
+        rich_elements = generate_rich_elements(
+            section_title=section.title,
+            section_content=content,
+            mode_name=mode.name,
+            research_notes=research_notes,
+            output_dir=output_dir,
+            api_key=api_key,
+        )
 
     return DraftedSection(
         key=section.key,
@@ -179,4 +216,5 @@ def draft_section(
         content=content,
         word_count=word_count,
         sources_used=section.source_urls,
+        rich_elements=rich_elements,
     )
