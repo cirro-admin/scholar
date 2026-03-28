@@ -24,6 +24,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+# LaTeX commands that matplotlib mathtext cannot render
+# Anything here falls back to text-only display
+_UNSUPPORTED_LATEX = {
+    r"\underbrace", r"\overbrace", r"\mathcal", r"\mathbb", r"\mathscr",
+    r"\mathfrak", r"\boldsymbol", r"\bm", r"\operatorname",
+    r"\left(", r"\right)", r"\left[", r"\right]", r"\left\{", r"\right\}",
+    r"\quad", r"\qquad", r"\text{", r"\mathrm{", r"\begin{",
+    r"\end{", r"\array", r"\pmatrix", r"\bmatrix", r"\cases",
+    r"\overset", r"\underset", r"\xleftarrow", r"\xrightarrow",
+}
+
+def _is_matplotlib_safe(latex: str) -> bool:
+    """Return True if matplotlib mathtext can handle this expression."""
+    return not any(cmd in latex for cmd in _UNSUPPORTED_LATEX)
+
+
+
 from utils.llm import generate_json, generate
 
 RichType = Literal["mermaid", "table", "latex", "chart", "code"]
@@ -55,41 +72,87 @@ def _render_mermaid_to_png(source: str, output_dir: str) -> str:
 
 # ── LaTeX ─────────────────────────────────────────────────────────────────────
 
+def _strip_delimiters(latex: str) -> str:
+    expr = latex.strip()
+    if expr.startswith("$$") and expr.endswith("$$"):
+        return expr[2:-2].strip()
+    if expr.startswith("$") and expr.endswith("$"):
+        return expr[1:-1].strip()
+    return expr
+
+
 def _render_latex_to_png(latex: str, output_dir: str) -> str:
-    """Render LaTeX equation to PNG using matplotlib's mathtext engine."""
+    """
+    3-path LaTeX renderer — never crashes, always produces output.
+    Path 1: matplotlib mathtext  (simple equations)
+    Path 2: sympy pretty-print  (moderate complexity)
+    Path 3: monospace text image (fallback — always works)
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    h        = hashlib.md5(latex.encode()).hexdigest()[:8]
+    png_path = Path(output_dir) / f"latex_{h}.png"
+    expr     = _strip_delimiters(latex)
+
+    # Path 1: matplotlib mathtext
+    if _is_matplotlib_safe(expr):
+        try:
+            fig, ax = plt.subplots(figsize=(7, 1.4))
+            ax.axis("off")
+            ax.text(0.5, 0.5, f"${expr}$", fontsize=14, ha="center", va="center",
+                    transform=ax.transAxes)
+            fig.savefig(str(png_path), dpi=150, bbox_inches="tight",
+                        facecolor="white")
+            plt.close(fig)
+            if png_path.exists() and png_path.stat().st_size > 500:
+                return str(png_path)
+        except Exception:
+            plt.close("all")
+
+    # Path 2: sympy pretty-print
     try:
-        import matplotlib.pyplot as plt
-        import matplotlib
-        matplotlib.use("Agg")
-
-        h        = hashlib.md5(latex.encode()).hexdigest()[:8]
-        png_path = Path(output_dir) / f"latex_{h}.png"
-
-        fig, ax = plt.subplots(figsize=(6, 1.2))
+        from sympy.parsing.latex import parse_latex
+        from sympy import pretty
+        sym_expr   = parse_latex(expr)
+        pretty_str = pretty(sym_expr, use_unicode=True)
+        p_lines    = pretty_str.split("\n")
+        fig_h      = max(0.8, len(p_lines) * 0.4 + 0.3)
+        fig, ax    = plt.subplots(figsize=(8, fig_h))
         ax.axis("off")
-        # Strip any existing $$ or $ delimiters — matplotlib mathtext
-        # uses its own $ wrapping internally
-        expr = latex.strip()
-        # Remove display math delimiters $$...$$
-        if expr.startswith("$$") and expr.endswith("$$"):
-            expr = expr[2:-2].strip()
-        # Remove inline math delimiters $...$
-        elif expr.startswith("$") and expr.endswith("$"):
-            expr = expr[1:-1].strip()
-        # Wrap in single $ for matplotlib mathtext
-        expr = f"${expr}$"
-        ax.text(0.5, 0.5, expr, fontsize=14, ha="center", va="center",
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, pretty_str, fontsize=12, ha="center", va="center",
+                transform=ax.transAxes, fontfamily="monospace",
+                multialignment="center")
         fig.savefig(str(png_path), dpi=150, bbox_inches="tight",
-                    facecolor="white", transparent=False)
+                    facecolor="white")
+        plt.close(fig)
+        if png_path.exists() and png_path.stat().st_size > 500:
+            return str(png_path)
+    except Exception:
+        plt.close("all")
+
+    # Path 3: always works — render raw LaTeX as styled text image
+    try:
+        raw  = latex.replace("$$","").replace("$","").strip()
+        lines = raw.split("\n")
+        fig_h = max(0.8, len(lines) * 0.5 + 0.3)
+        fig, ax = plt.subplots(figsize=(9, fig_h))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "\n".join(lines), fontsize=9,
+                ha="center", va="center", transform=ax.transAxes,
+                fontfamily="monospace", color="#1a1a1a",
+                bbox=dict(boxstyle="round,pad=0.4", facecolor="#f7f7f7",
+                          edgecolor="#cccccc", linewidth=0.8))
+        fig.savefig(str(png_path), dpi=150, bbox_inches="tight",
+                    facecolor="white")
         plt.close(fig)
         return str(png_path)
     except Exception as e:
-        print(f"[rich] LaTeX render failed: {e}")
+        plt.close("all")
+        print(f"[rich] LaTeX render fully failed: {e}")
         return ""
 
-
-# ── Chart ─────────────────────────────────────────────────────────────────────
 
 def _sanitise_values(vals) -> list:
     """Replace None / non-numeric values with 0 to prevent matplotlib crashes."""

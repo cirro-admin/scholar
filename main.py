@@ -75,6 +75,17 @@ def run(
         pdf_chunks = read_pdfs(paths)
         app.print(f"[dim]  → {len(pdf_chunks)} chunks extracted[/dim]")
 
+    # Apply output format override
+    if fmt:
+        valid_formats = {"docx", "markdown", "pdf", "html"}
+        if fmt not in valid_formats:
+            app.print(f"[red]Unknown format '{fmt}'. Choose: {', '.join(valid_formats)}[/red]")
+            raise typer.Exit(1)
+        ext_map = {"docx": ".docx", "markdown": ".md", "pdf": ".pdf", "html": ".html"}
+        mode_cfg.output_format  = fmt
+        mode_cfg.file_extension = ext_map[fmt]
+        app.print(f"[dim]Format override: {fmt}[/dim]")
+
     # Apply section skipping
     if skip_sections:
         skip_set = {s.strip() for s in skip_sections.split(",") if s.strip()}
